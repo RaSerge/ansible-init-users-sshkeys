@@ -1,0 +1,98 @@
+---
+#
+# Role initalizes a new host( or hosts) by adding users
+# and ssh keys
+#
+
+#- name: add the ssh key to ansible operating user pubkeys
+#  authorized_key: user="{{ ansible_user }}"
+#                  key="{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+#  tags: ['add_users', 'remove_users', 'config']
+
+- name: check if sudo present
+  command: sudo -V
+  ignore_errors: yes
+  register: has_sudo
+  tags: ['config']
+
+- name: install sudo if missing
+  package: name=sudo state=latest
+  when: has_sudo|failed
+  tags: ['config']
+
+- name: create/update sudo_users
+  user: name={{ item }}
+        state=present
+        groups=sudo
+        append=yes
+        shell=/bin/bash
+  with_items: "{{ sudo_users }}"
+  tags: ['add_users']
+
+- name: add sudo_users authorized keys
+  authorized_key: user={{ item }}
+                  key="{{ lookup('file', item + '_id_rsa.pub') }}"
+  with_items: "{{ sudo_users }}"
+  tags: ['add_users']
+
+- name: add sudo_users authorized key to root
+  authorized_key: user=root
+                  key="{{ lookup('file', item + '_id_rsa.pub') }}"
+  with_items: "{{ sudo_users }}"
+  tags: ['add_users']
+
+
+- name: create/update sudoers rules
+  lineinfile: dest=/etc/sudoers.d/{{ item }}
+              state=present
+              regexp='^{{ item }}'
+              create=yes
+              line='{{ item }} ALL=(ALL) NOPASSWD:ALL'
+              validate='visudo -cf %s'
+  with_items: "{{ sudo_users }}"
+  tags: ['add_users']
+
+- name: remove absent_users
+  user: name={{ item }}
+        state=absent
+  with_items: "{{ absent_users }}"
+  tags: ['remove_users']
+
+- name: Install\update  sshguard
+  package: name=sshguard state=latest
+  when: harden_sshd
+  tags: ['sshguard_init']
+
+- name: Configure sshguard whitelist
+  lineinfile:
+    path: "{{ sshguard_whitelist_path }}"
+    line: "{{ item }}"
+  with_items: "{{ sshguard_whitelist }}"
+  notify: restart sshguard
+  when: harden_sshd
+  tags: ['sshguard_conf']
+
+- name: Update SSH configuration to be more secure.
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+  when: harden_sshd
+  with_items:
+   - regexp: "^PasswordAuthentication"
+     line: "PasswordAuthentication no"
+   - regexp: "^PermitRootLogin"
+     line: "PermitRootLogin no"
+   - regexp: "^UseDNS"
+     line: "UseDNS no"
+   - regexp: "^PermitEmptyPasswords"
+     line: "PermitEmptyPasswords no"
+   - regexp: "^ChallengeResponseAuthentication"
+     line: "ChallengeResponseAuthentication no"
+   - regexp: "^GSSAPIAuthentication"
+     line: "GSSAPIAuthentication no"
+   - regexp: "^X11Forwarding"
+     line: "X11Forwarding no"
+  notify: reload sshd
+  tags: ['config_sshd']

@@ -1,0 +1,12 @@
+---
+#
+#
+#
+- name: reload sshd
+  service: name=ssh state=reloaded enabled=yes
+
+- name: restart sshd
+  service: name=ssh state=restarted enabled=yes
+
+- name: restart sshguard
+  service: name=sshguard state=restarted enabled=yes

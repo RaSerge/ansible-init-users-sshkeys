@@ -1,0 +1,14 @@
+---
+
+sudo_users:
+  - g.macarthur
+  - f.ted
+absent_users:
+  - p.tail
+  - r.negro
+
+init_force: false
+harden_sshd: false
+sshguard_whitelist_path: /etc/sshguard/whitelist
+sshguard_whitelist:
+  - 172.18.1.0/16 #internal network
